@@ -9,7 +9,9 @@ build/
 .ruff_cache/
 
 # IDE
-.vscode/
+.vscode/settings.json
+.vscode/launch.json
+.vscode/extensions.json
 .idea/
 
 # Environment & Secrets
