@@ -18,12 +18,24 @@ Credentials go in `.env` (see `.env.example`): `DATABRICKS_HOST`, `DATABRICKS_TO
 
 Verify connection:
 ```bash
-python -c "from spark_session import get_spark; print(get_spark().sql('SELECT 1').collect())"
+python -c "from dbstarter import get_spark; print(get_spark().sql('SELECT 1').collect())"
 ```
+
+For dev tools (black, isort): `uv pip install -e ".[dev]"`
 
 For notebooks: `uv pip install -e ".[notebook]"`
 
-No test suite or linter is configured.
+Formatting: `black .` and `isort .` (line-length 90, isort black profile — configured in `pyproject.toml`).
+
+### VS Code
+
+Copy templates to get a working local config:
+```bash
+cp .vscode/settings_template.json .vscode/settings.json
+cp .vscode/launch_template.json .vscode/launch.json
+cp .vscode/extensions_template.json .vscode/extensions.json
+```
+Then fill in your Databricks credentials in `launch.json`. The actual config files are gitignored; only templates are committed.
 
 ## Architecture
 
@@ -31,7 +43,7 @@ No test suite or linter is configured.
 - **`dbstarter/workspace.py`** — All Databricks SDK interactions: Unity Catalog browsing (`list_catalogs`, `list_schemas`, `list_tables`, `describe_table`), job management (`list_jobs`, `create_job`, `run_job`, `get_run_status`), cluster listing, secret listing, SQL queries, and DBFS uploads. Each function creates its own `WorkspaceClient`.
 - **`dbstarter/__main__.py`** — CLI entry point via `argparse`. Dispatches subcommands to functions in `workspace.py`. Registered as `dbstarter` console script in `pyproject.toml`.
 - **`dbstarter/__init__.py`** — Re-exports `get_spark` and `get_workspace_client`.
-- **`spark_session.py` (root)** — Backward-compat shim that re-exports `get_spark` from the package. Example scripts import from here.
+- **`examples/`** — Demo scripts (`example_query.py`, `example_etl.py`) that import from `dbstarter` directly.
 
 ## CLI (`dbstarter`)
 
@@ -49,4 +61,4 @@ dbstarter clusters | secrets | query "<SQL>"
 - Package manager is **uv**, not pip.
 - `get_spark()` is the single entry point for obtaining a SparkSession — always use it rather than constructing sessions directly.
 - Workspace SDK calls go through `dbstarter/workspace.py` functions, not raw SDK usage.
-- Example scripts (`example_query.py`, `example_etl.py`) import from the root `spark_session.py` shim.
+- Example scripts live in `examples/` and import from `dbstarter` directly.

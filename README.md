@@ -18,6 +18,7 @@ cd databricks-connect-starter
 uv venv --python 3.12
 source .venv/bin/activate
 uv pip install -e .
+uv pip install -e ".[dev]"   # black, isort
 ```
 
 ### 2. Configure credentials
@@ -44,7 +45,7 @@ DATABRICKS_CLUSTER_ID=       # leave empty for serverless (recommended)
 ### 3. Verify the connection
 
 ```bash
-python -c "from spark_session import get_spark; print(get_spark().sql('SELECT 1').collect())"
+python -c "from dbstarter import get_spark; print(get_spark().sql('SELECT 1').collect())"
 ```
 
 Expected output:
@@ -79,8 +80,8 @@ The agent will ask you follow-up questions (which tables are important? what's y
 ### Quick start
 
 ```bash
-python example_query.py    # reads NYC taxi data, runs SQL, prints results
-python example_etl.py      # runs a simple ETL pipeline with aggregations
+python examples/example_query.py    # reads NYC taxi data, runs SQL, prints results
+python examples/example_etl.py      # runs a simple ETL pipeline with aggregations
 ```
 
 ### CLI Reference
@@ -109,6 +110,25 @@ dbstarter query "SELECT * FROM samples.nyctaxi.trips LIMIT 5"
 ```
 
 All list commands support `--limit N` (default: 50).
+
+### VS Code
+
+The project includes VS Code template configs in `.vscode/`. To set up your local environment:
+
+```bash
+cp .vscode/settings_template.json .vscode/settings.json
+cp .vscode/launch_template.json .vscode/launch.json
+cp .vscode/extensions_template.json .vscode/extensions.json
+```
+
+Then edit `.vscode/launch.json` and fill in your Databricks credentials (`DATABRICKS_HOST`, `DATABRICKS_TOKEN`, `DATABRICKS_CLUSTER_ID`).
+
+What each file gives you:
+- **settings.json** — Python interpreter pointing to `.venv`, black formatter (line-length 90), isort with black profile, format-on-save enabled
+- **launch.json** — "Debugger: current file" config with Databricks env vars and `justMyCode: false` so you can step into library code (F5)
+- **extensions.json** — recommended extensions (Python, Debugpy, Jupyter)
+
+The actual config files are gitignored — only the `*_template.json` files are committed. You can customize your local copies without affecting the repo.
 
 ### Notebooks
 
@@ -165,7 +185,7 @@ Scripts are uploaded to DBFS and tasks are created in the order you list them (s
 ### In your own scripts
 
 ```python
-from spark_session import get_spark
+from dbstarter import get_spark
 
 spark = get_spark()
 df = spark.read.table("my_catalog.my_schema.my_table")
@@ -201,11 +221,15 @@ dbstarter/                # Python package
   spark_session.py        # Core: creates remote SparkSession
   workspace.py            # Workspace utilities (catalogs, tables, jobs, clusters)
   __main__.py             # CLI entry point (dbstarter command)
-spark_session.py          # Backward-compat shim (re-exports from package)
-example_query.py          # Demo: read tables, SQL, see output
-example_etl.py            # Demo: a more realistic ETL script
+examples/
+  example_query.py        # Demo: read tables, SQL, see output
+  example_etl.py          # Demo: a more realistic ETL script
 notebooks/
   getting_started.ipynb   # Sample Jupyter notebook
+.vscode/
+  settings_template.json  # VS Code settings (black, isort, interpreter)
+  launch_template.json    # Debug config with Databricks env vars
+  extensions_template.json # Recommended extensions
 .env.example              # Template for credentials
 ```
 
