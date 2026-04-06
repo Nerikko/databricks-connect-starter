@@ -1,6 +1,6 @@
 from pyspark.sql import functions as F
 
-from spark_session import get_spark
+from dbstarter import get_spark
 
 spark = get_spark()
 

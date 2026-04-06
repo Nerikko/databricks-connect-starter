@@ -16,11 +16,18 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+dev = ["black>=24.0", "isort>=5.0"]
 notebook = ["jupyter>=1.0", "ipykernel>=6.0"]
 
 [project.scripts]
 dbstarter = "dbstarter.__main__:main"
 
-[tool.setuptools]
-packages = ["dbstarter"]
-py-modules = ["spark_session", "example_query", "example_etl"]
+[tool.black]
+line-length = 90
+
+[tool.isort]
+profile = "black"
+line_length = 90
+
+[tool.setuptools.packages.find]
+include = ["dbstarter*"]
