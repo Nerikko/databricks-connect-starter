@@ -96,6 +96,7 @@ dbstarter describe <catalog.schema.table>   # show table columns and types
 
 # Jobs
 dbstarter jobs                              # list all jobs
+dbstarter job-create script1.py script2.py  # create a job (serverless by default)
 dbstarter job-run <job_id>                  # trigger a job, prints run_id
 dbstarter job-status <run_id>               # check run status
 
@@ -126,31 +127,40 @@ jupyter notebook notebooks/getting_started.ipynb
 
 Your notebooks run locally but all Spark operations execute on Databricks — same as the scripts.
 
-### Criar um Job no Databricks via CLI
+### Creating a Databricks Job
 
-Se você quiser transformar esses dois scripts em um **Job** no Databricks (com duas tasks em sequência), use o script `create_job.sh`, que chama a **Databricks CLI**:
+Use `dbstarter job-create` to turn your scripts into a Databricks Job. Choose the compute mode that fits your use case:
 
-1. Autentique a CLI:
-
-```bash
-databricks auth login
-```
-
-2. Descubra o **Cluster ID** (em Compute > seu cluster).
-
-3. Na raiz do projeto, rode:
+**Serverless (default)** — no cluster setup, simplest option:
 
 ```bash
-chmod +x create_job.sh
-./create_job.sh <SEU_CLUSTER_ID>
+dbstarter job-create example_query.py example_etl.py
 ```
 
-Isso vai:
+**Existing cluster** — use a cluster that's already running:
 
-- Copiar `example_query.py` e `example_etl.py` para `dbfs:/apps/databricks-connect-starter/`
-- Criar um Job chamado `databricks-connect-starter-job` com:
-  - Task `example_query` executando `example_query.py`
-  - Task `example_etl` executando `example_etl.py` depois da primeira
+```bash
+dbstarter job-create --cluster-id 1234-567890-abcd123 example_query.py example_etl.py
+```
+
+**Job cluster** — creates an ephemeral cluster per run (cheaper for scheduled jobs):
+
+```bash
+dbstarter job-create --new-cluster example_query.py example_etl.py
+```
+
+You can customize the job cluster with `--spark-version`, `--node-type`, and `--num-workers`:
+
+```bash
+dbstarter job-create --new-cluster --spark-version 15.4.x-scala2.12 --node-type i3.xlarge --num-workers 4 example_etl.py
+```
+
+Other options:
+- `--name "my-job"` — custom job name (auto-generated from script names if omitted)
+- `--parallel` — run tasks in parallel instead of sequential
+- `--dbfs-path dbfs:/my/path` — custom DBFS upload directory
+
+Scripts are uploaded to DBFS and tasks are created in the order you list them (sequential by default).
 
 ### In your own scripts
 
@@ -194,7 +204,6 @@ dbstarter/                # Python package
 spark_session.py          # Backward-compat shim (re-exports from package)
 example_query.py          # Demo: read tables, SQL, see output
 example_etl.py            # Demo: a more realistic ETL script
-create_job.sh             # Creates a Databricks Job via CLI
 notebooks/
   getting_started.ipynb   # Sample Jupyter notebook
 .env.example              # Template for credentials
@@ -220,7 +229,17 @@ uv pip install --upgrade --reinstall "databricks-connect>=16.1.0"
 - Check you have access to the catalog/schema in Databricks
 - The example scripts use `samples.nyctaxi.trips` — this is a built-in sample dataset available in most workspaces
 
-## Serverless vs Classic Cluster
+## Compute Modes
 
-- **Serverless (default):** No cluster setup needed. Leave `DATABRICKS_CLUSTER_ID` empty. Compute spins up automatically.
+### Interactive sessions (Databricks Connect)
+
+- **Serverless (default):** Leave `DATABRICKS_CLUSTER_ID` empty. Compute spins up automatically.
 - **Classic cluster:** Set `DATABRICKS_CLUSTER_ID` in `.env`. The cluster must be running and its DBR version must match your `databricks-connect` package version.
+
+### Jobs (`dbstarter job-create`)
+
+| Mode | Flag | Best for |
+|------|------|----------|
+| **Serverless** | *(default, no flag)* | Simplest — no cluster config needed |
+| **Existing cluster** | `--cluster-id ID` | Dev/testing with a running cluster |
+| **Job cluster** | `--new-cluster` | Scheduled/production — ephemeral cluster is created per run and terminates after, which is cheaper |

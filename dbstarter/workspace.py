@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import os
+
 from databricks.sdk import WorkspaceClient
+from databricks.sdk.service import compute, jobs
 from dotenv import load_dotenv
 
 
@@ -134,3 +137,96 @@ def run_query(sql: str) -> list[dict]:
     spark = get_spark()
     rows = spark.sql(sql).collect()
     return [row.asDict() for row in rows]
+
+
+# ── DBFS upload ────────────────────────────────────────────────────────────
+
+
+def upload_to_dbfs(
+    local_path: str,
+    dbfs_dir: str = "dbfs:/apps/databricks-connect-starter",
+) -> str:
+    w = get_workspace_client()
+    filename = os.path.basename(local_path)
+    dbfs_path = f"{dbfs_dir}/{filename}"
+    api_path = dbfs_path.removeprefix("dbfs:")
+
+    dir_api_path = dbfs_dir.removeprefix("dbfs:")
+    w.dbfs.mkdirs(dir_api_path)
+
+    with open(local_path, "rb") as f:
+        w.dbfs.upload(api_path, f, overwrite=True)
+
+    return dbfs_path
+
+
+# ── Job creation ───────────────────────────────────────────────────────────
+
+
+def create_job(
+    name: str,
+    scripts: list[str],
+    compute_mode: str = "serverless",
+    cluster_id: str | None = None,
+    spark_version: str = "15.4.x-scala2.12",
+    node_type_id: str = "i3.xlarge",
+    num_workers: int = 1,
+    sequential: bool = True,
+) -> dict:
+    w = get_workspace_client()
+
+    # Build task list
+    task_list: list[jobs.Task] = []
+    seen_keys: dict[str, int] = {}
+    prev_key: str | None = None
+
+    for script_path in scripts:
+        base = script_path.rsplit("/", 1)[-1].removesuffix(".py")
+        task_key = base.replace(" ", "_").replace("-", "_")
+
+        # Ensure unique task keys
+        if task_key in seen_keys:
+            seen_keys[task_key] += 1
+            task_key = f"{task_key}_{seen_keys[task_key]}"
+        else:
+            seen_keys[task_key] = 1
+
+        task = jobs.Task(
+            task_key=task_key,
+            spark_python_task=jobs.SparkPythonTask(python_file=script_path),
+        )
+
+        if compute_mode == "existing_cluster":
+            task.existing_cluster_id = cluster_id
+        elif compute_mode == "new_cluster":
+            task.job_cluster_key = "shared_job_cluster"
+        elif compute_mode == "serverless":
+            task.environment_key = "Default"
+
+        if sequential and prev_key:
+            task.depends_on = [jobs.TaskDependency(task_key=prev_key)]
+
+        task_list.append(task)
+        prev_key = task_key
+
+    # Build job-level config
+    create_kwargs: dict = {"name": name, "tasks": task_list}
+
+    if compute_mode == "new_cluster":
+        create_kwargs["job_clusters"] = [
+            jobs.JobCluster(
+                job_cluster_key="shared_job_cluster",
+                new_cluster=compute.ClusterSpec(
+                    spark_version=spark_version,
+                    node_type_id=node_type_id,
+                    num_workers=num_workers,
+                ),
+            )
+        ]
+    elif compute_mode == "serverless":
+        create_kwargs["environments"] = [
+            jobs.JobEnvironment(environment_key="Default"),
+        ]
+
+    result = w.jobs.create(**create_kwargs)
+    return {"job_id": result.job_id}
