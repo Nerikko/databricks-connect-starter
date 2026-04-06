@@ -1,0 +1,26 @@
+[project]
+name = "databricks-connect-starter"
+version = "0.1.0"
+description = "Minimal starter for running PySpark locally via Databricks Connect"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12,<3.13"
+authors = [
+    { name = "Enrico Sagnelli" }
+]
+
+dependencies = [
+    "databricks-connect>=16.1.0,<18.1",
+    "databricks-sdk>=0.40.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+notebook = ["jupyter>=1.0", "ipykernel>=6.0"]
+
+[project.scripts]
+dbstarter = "dbstarter.__main__:main"
+
+[tool.setuptools]
+packages = ["dbstarter"]
+py-modules = ["spark_session", "example_query", "example_etl"]
