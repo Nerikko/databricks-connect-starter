@@ -178,9 +178,9 @@ dbstarter job-create --new-cluster --spark-version 15.4.x-scala2.12 --node-type 
 Other options:
 - `--name "my-job"` — custom job name (auto-generated from script names if omitted)
 - `--parallel` — run tasks in parallel instead of sequential
-- `--dbfs-path dbfs:/my/path` — custom DBFS upload directory
+- `--upload-path /Workspace/Users/.../my/path` — custom Workspace upload directory
 
-Scripts are uploaded to DBFS and tasks are created in the order you list them (sequential by default).
+Scripts are uploaded to the Workspace filesystem and tasks are created in the order you list them (sequential by default).
 
 ### In your own scripts
 

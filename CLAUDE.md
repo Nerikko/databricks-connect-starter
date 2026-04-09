@@ -1,10 +1,20 @@
+---
+description: 
+alwaysApply: true
+---
+
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
 
-Databricks Connect starter kit — run PySpark scripts locally while all Spark operations execute remotely on a Databricks workspace. No jobs are created; it's a live interactive session. Also includes a CLI (`dbstarter`) for workspace exploration and job management.
+Databricks Connect starter kit. Two modes of operation:
+
+1. **Interactive (Databricks Connect)** — Run PySpark scripts locally; Spark operations execute remotely on the workspace. No jobs created.
+2. **Jobs (`dbstarter job-create`)** — Upload scripts to the Workspace filesystem, create a Databricks Job, run it entirely on Databricks.
+
+Also includes a CLI (`dbstarter`) for workspace exploration (catalogs, tables, jobs, clusters, secrets, SQL).
 
 ## Setup & Development
 
@@ -25,7 +35,7 @@ For dev tools (black, isort): `uv pip install -e ".[dev]"`
 
 For notebooks: `uv pip install -e ".[notebook]"`
 
-Formatting: `black .` and `isort .` (line-length 90, isort black profile — configured in `pyproject.toml`).
+Formatting: `black .` and `isort .` (line-length 90, isort black profile -- configured in `pyproject.toml`).
 
 ### VS Code
 
@@ -39,26 +49,132 @@ Then fill in your Databricks credentials in `launch.json`. The actual config fil
 
 ## Architecture
 
-- **`dbstarter/spark_session.py`** — `get_spark()` creates a `DatabricksSession` (serverless if no `DATABRICKS_CLUSTER_ID`, otherwise classic cluster). Loads `.env` via `python-dotenv`.
-- **`dbstarter/workspace.py`** — All Databricks SDK interactions: Unity Catalog browsing (`list_catalogs`, `list_schemas`, `list_tables`, `describe_table`), job management (`list_jobs`, `create_job`, `run_job`, `get_run_status`), cluster listing, secret listing, SQL queries, and DBFS uploads. Each function creates its own `WorkspaceClient`.
-- **`dbstarter/__main__.py`** — CLI entry point via `argparse`. Dispatches subcommands to functions in `workspace.py`. Registered as `dbstarter` console script in `pyproject.toml`.
-- **`dbstarter/__init__.py`** — Re-exports `get_spark` and `get_workspace_client`.
-- **`examples/`** — Demo scripts (`example_query.py`, `example_etl.py`) that import from `dbstarter` directly.
+- **`dbstarter/spark_session.py`** -- `get_spark()` creates a `DatabricksSession` (serverless if no `DATABRICKS_CLUSTER_ID`, otherwise classic cluster). Loads `.env` via `python-dotenv`.
+- **`dbstarter/workspace.py`** -- All Databricks SDK interactions: Unity Catalog browsing (`list_catalogs`, `list_schemas`, `list_tables`, `describe_table`), job management (`list_jobs`, `create_job`, `run_job`, `get_run_status`), cluster listing, secret listing, SQL queries, and Workspace filesystem uploads. Each function creates its own `WorkspaceClient`.
+- **`dbstarter/__main__.py`** -- CLI entry point via `argparse`. Dispatches subcommands to functions in `workspace.py`. Registered as `dbstarter` console script in `pyproject.toml`.
+- **`dbstarter/__init__.py`** -- Re-exports `get_spark` and `get_workspace_client`.
+- **`examples/`** -- Demo scripts (`example_query.py`, `example_etl.py`, `test_job.py`) that can run locally via Connect or be deployed as jobs.
+
+## Two ways to run scripts
+
+### 1. Interactive via Databricks Connect (local execution)
+
+The script runs on your machine; Spark operations are sent to Databricks and results stream back. Use `get_spark()` from `dbstarter`:
+
+```python
+from dbstarter import get_spark
+spark = get_spark()
+df = spark.sql("SELECT 1")
+df.show()
+```
+
+Run with: `python examples/example_query.py` or the VS Code Run/Debug button.
+
+- Requires `DATABRICKS_HOST` + `DATABRICKS_TOKEN` in `.env`
+- Serverless by default; set `DATABRICKS_CLUSTER_ID` for a classic cluster
+- Cold start can take 30-60s for serverless
+
+### 2. Databricks Job (remote execution)
+
+The script runs entirely on Databricks. Use the CLI to upload, create, and run:
+
+```bash
+dbstarter job-create examples/test_job.py --name my-test
+dbstarter job-run <job_id>
+dbstarter job-status <run_id>
+```
+
+**Important:** Job scripts must be **self-contained** -- they cannot `import dbstarter` because that package is not installed on the cluster. Use `SparkSession.builder.getOrCreate()` instead of `get_spark()`:
+
+```python
+from pyspark.sql import SparkSession
+spark = SparkSession.builder.getOrCreate()
+```
+
+Scripts are uploaded to the Workspace filesystem at `/Workspace/Users/<your_email>/apps/databricks-connect-starter/` (auto-detected from your token).
+
+### Job compute modes
+
+| Mode | CLI flag | How it works |
+|------|----------|-------------|
+| **Serverless** | *(default, no flag)* | No cluster config needed. Uses `Environment(client="2")`. |
+| **Existing cluster** | `--cluster-id <ID>` | Uses a running cluster. Pass `env` to read from `DATABRICKS_CLUSTER_ID`. |
+| **Job cluster** | `--new-cluster` | Ephemeral cluster created per run, terminated after. Customizable with `--spark-version`, `--node-type`, `--num-workers`. |
+
+### Full job-create options
+
+```bash
+dbstarter job-create <scripts...> [options]
+  --name "my-job"           # custom name (auto-generated if omitted)
+  --parallel                # run tasks in parallel (default: sequential)
+  --upload-path /Workspace/...  # custom upload dir (default: auto-detect)
+  --cluster-id <ID|env>     # existing cluster mode
+  --new-cluster             # ephemeral job cluster mode
+  --spark-version X         # for --new-cluster (default: 15.4.x-scala2.12)
+  --node-type X             # for --new-cluster (default: i3.xlarge)
+  --num-workers N           # for --new-cluster (default: 1)
+```
 
 ## CLI (`dbstarter`)
 
 ```bash
-dbstarter catalogs | schemas <catalog> | tables <cat.schema> | describe <cat.schema.table>
-dbstarter jobs | job-create <scripts...> | job-run <job_id> | job-status <run_id>
-dbstarter clusters | secrets | query "<SQL>"
+# Unity Catalog exploration
+dbstarter catalogs                          # list catalogs
+dbstarter schemas <catalog>                 # list schemas
+dbstarter tables <catalog.schema>           # list tables
+dbstarter describe <catalog.schema.table>   # show columns, types, comments
+
+# Jobs
+dbstarter jobs                              # list all jobs
+dbstarter job-create <scripts...>           # create a job (see above)
+dbstarter job-run <job_id>                  # trigger a run
+dbstarter job-status <run_id>               # check run state
+
+# Infrastructure
+dbstarter clusters                          # list clusters + state
+dbstarter secrets                           # list secret scopes and keys
+
+# SQL query (runs via Databricks Connect)
+dbstarter query "SELECT * FROM samples.nyctaxi.trips LIMIT 5"
 ```
 
-`job-create` supports three compute modes: serverless (default), `--cluster-id`, or `--new-cluster` (ephemeral). Scripts are uploaded to DBFS before job creation.
+All list commands support `--limit N` (default: 50).
+
+## Notebooks
+
+```bash
+uv pip install -e ".[notebook]"
+python -m ipykernel install --user --name dbstarter
+jupyter notebook notebooks/getting_started.ipynb
+```
+
+Notebooks run locally but Spark operations execute on Databricks (same as scripts via Connect).
+
+## Key functions reference
+
+| Function | Module | Purpose |
+|----------|--------|---------|
+| `get_spark()` | `spark_session.py` | Single entry point for `DatabricksSession` (serverless or cluster) |
+| `get_workspace_client()` | `workspace.py` | Creates a `WorkspaceClient` from `.env` credentials |
+| `upload_to_workspace()` | `workspace.py` | Uploads files to Workspace filesystem (auto-detects user path) |
+| `create_job()` | `workspace.py` | Creates a job with tasks; supports serverless/existing/new cluster |
+| `run_job()` | `workspace.py` | Triggers a job run, returns `run_id` |
+| `get_run_status()` | `workspace.py` | Returns lifecycle state and result state of a run |
+| `run_query()` | `workspace.py` | Executes SQL via Spark Connect, returns list of dicts |
+| `list_catalogs/schemas/tables()` | `workspace.py` | Unity Catalog browsing |
+| `describe_table()` | `workspace.py` | Full table schema (columns, types, comments) |
+
+## Known workspace constraints
+
+- **DBFS disabled** -- Many workspaces block public DBFS. Upload uses the Workspace filesystem API (`w.workspace.upload()`) which works everywhere. The old `upload_to_dbfs()` is kept but deprecated.
+- **Serverless environment** -- Jobs API requires `spec=compute.Environment(client="2")` in `JobEnvironment`. Using `client="1"` fails on most workspaces.
+- **Free Edition** -- Supports serverless compute for jobs but not classic clusters (no Compute tab). Interactive Connect sessions work with serverless.
 
 ## Key Conventions
 
 - Python 3.12 only (constrained in `pyproject.toml`).
 - Package manager is **uv**, not pip.
-- `get_spark()` is the single entry point for obtaining a SparkSession — always use it rather than constructing sessions directly.
+- `get_spark()` is the single entry point for obtaining a SparkSession in interactive mode -- always use it rather than constructing sessions directly.
+- Job scripts must NOT import `dbstarter` -- use `SparkSession.builder.getOrCreate()` instead.
 - Workspace SDK calls go through `dbstarter/workspace.py` functions, not raw SDK usage.
-- Example scripts live in `examples/` and import from `dbstarter` directly.
+- Example scripts live in `examples/` and import from `dbstarter` for interactive use.
