@@ -11,6 +11,16 @@ Python 3.12 | `uv` (not pip) | black + isort (line-length 90)
 - **All SDK operations** go through `dbstarter/workspace.py` — no raw `WorkspaceClient` usage elsewhere.
 - **Never commit** `.env`, `.vscode/launch.json`, or any file containing tokens.
 
+## Environment & Production Rules
+
+- The ONLY variable that changes between dev and prod is `CATALOG`.
+- Always define `CATALOG` at the top of every script — never hardcode catalog names elsewhere.
+- Interactive: `CATALOG = "dev"`. Jobs: `CATALOG = os.getenv("CATALOG", "dev")`.
+- Always use full 3-part names: `f"{CATALOG}.schema.table"`.
+- Exception: system catalogs like `"samples"` can be hardcoded.
+- Every script must have a header: `# ENV: dev | target: prod` with inputs/outputs listed.
+- Never deploy a job without a successful local test via Connect first.
+
 ## Import Cheatsheet
 
 ```python
@@ -38,4 +48,11 @@ from pyspark.sql import functions as F
 - `__main__.py` — CLI, 11 subcommands via argparse
 - `__init__.py` — re-exports `get_spark`, `get_workspace_client`
 
-Full docs in `CLAUDE.md`. Detailed rules in `.cursor/rules/`.
+Full project docs in `CLAUDE.md`.
+Detailed rules in `.cursor/rules/`:
+- `databricks.mdc` — Databricks patterns, Delta Lake, secrets
+- `conventions.mdc` — code style, logging, naming
+- `commands.mdc` — dev commands cheatsheet
+- `environment.mdc` — credentials, dotenv mechanics
+- `project-structure.mdc` — module boundaries
+- `agent-workflow.mdc` — ALWAYS READ: dev→prod workflow, data quality, ETL structure, production checklist

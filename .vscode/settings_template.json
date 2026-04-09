@@ -25,5 +25,7 @@
         "--line-length",
         "90"
     ],
-    "editor.code": true
+    "editor.code": true,
+    "notebook.diff.ignoreMetadata": true,
+    "notebook.diff.ignoreOutputs": true
 }
