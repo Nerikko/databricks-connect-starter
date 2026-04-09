@@ -1,0 +1,38 @@
+# Databricks Connect Starter Kit
+
+Minimal starter for running PySpark locally via Databricks Connect, plus a CLI for workspace exploration and job management. Python 3.12 only, managed with `uv`.
+
+## Two Execution Modes
+
+1. **Interactive (Databricks Connect)** — Script runs locally, Spark ops execute remotely. Use `from dbstarter import get_spark`.
+2. **Jobs (`dbstarter job-create`)** — Script runs entirely on Databricks. Must be self-contained.
+
+## Critical Rules
+
+- **Job scripts must NOT import `dbstarter`** — use `SparkSession.builder.getOrCreate()` instead. The `dbstarter` package is not installed on clusters.
+- **Interactive scripts** always use `from dbstarter import get_spark` — never construct `DatabricksSession` directly.
+- **DBFS is disabled** on most workspaces — use `upload_to_workspace()` (Workspace filesystem API), not DBFS.
+- **Serverless jobs** require `compute.Environment(client="2")` — `client="1"` fails.
+- **All Databricks SDK operations** go through functions in `dbstarter/workspace.py` — no raw SDK usage elsewhere.
+- **Package manager is `uv`**, not pip.
+
+## Architecture
+
+- `dbstarter/spark_session.py` — `get_spark()` creates DatabricksSession (serverless or cluster)
+- `dbstarter/workspace.py` — All SDK interactions: catalogs, jobs, clusters, secrets, upload, query
+- `dbstarter/__main__.py` — CLI entry point, 11 subcommands via argparse
+- `dbstarter/__init__.py` — Re-exports `get_spark` and `get_workspace_client`
+- `examples/` — Demo scripts for interactive mode and job testing
+- `notebooks/` — Jupyter notebooks for interactive exploration
+
+## Code Style
+
+- **black**: line-length 90 (configured in `pyproject.toml`)
+- **isort**: black profile, line-length 90
+- Format before committing: `black . && isort .`
+
+## Environment
+
+Credentials in `.env` (gitignored): `DATABRICKS_HOST`, `DATABRICKS_TOKEN`, `DATABRICKS_CLUSTER_ID` (optional, empty = serverless).
+
+See `.cursor/rules/` for detailed Databricks patterns, project structure, conventions, commands, and environment setup.
