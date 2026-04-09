@@ -8,8 +8,13 @@ from databricks.sdk.service.workspace import ImportFormat
 from dotenv import load_dotenv
 
 
+# NOTE: Creates a new WorkspaceClient on every call. Fine for CLI usage
+# (one command per invocation) but avoid calling in tight loops.
 def get_workspace_client() -> WorkspaceClient:
     load_dotenv()
+    host = os.environ.get("DATABRICKS_HOST", "")
+    if host and not host.startswith("https://"):
+        raise ValueError(f"DATABRICKS_HOST must start with https://, got: {host}")
     return WorkspaceClient()
 
 
@@ -40,10 +45,12 @@ def list_tables(catalog: str, schema: str, limit: int = 50) -> list[dict]:
     w = get_workspace_client()
     results = []
     for table in w.tables.list(catalog_name=catalog, schema_name=schema):
-        results.append({
-            "name": table.name,
-            "table_type": str(table.table_type.value) if table.table_type else "",
-        })
+        results.append(
+            {
+                "name": table.name,
+                "table_type": str(table.table_type.value) if table.table_type else "",
+            }
+        )
         if len(results) >= limit:
             break
     return results
@@ -54,11 +61,13 @@ def describe_table(full_name: str) -> dict:
     table = w.tables.get(full_name)
     columns = []
     for col in table.columns or []:
-        columns.append({
-            "name": col.name,
-            "type": col.type_text or "",
-            "comment": col.comment or "",
-        })
+        columns.append(
+            {
+                "name": col.name,
+                "type": col.type_text or "",
+                "comment": col.comment or "",
+            }
+        )
     return {
         "name": table.full_name,
         "table_type": str(table.table_type.value) if table.table_type else "",
@@ -74,10 +83,12 @@ def list_jobs(limit: int = 50) -> list[dict]:
     w = get_workspace_client()
     results = []
     for job in w.jobs.list():
-        results.append({
-            "job_id": job.job_id,
-            "name": job.settings.name if job.settings else "",
-        })
+        results.append(
+            {
+                "job_id": job.job_id,
+                "name": job.settings.name if job.settings else "",
+            }
+        )
         if len(results) >= limit:
             break
     return results
@@ -85,8 +96,8 @@ def list_jobs(limit: int = 50) -> list[dict]:
 
 def run_job(job_id: int) -> dict:
     w = get_workspace_client()
-    wait = w.jobs.run_now(job_id)
-    return {"run_id": wait.run_id}
+    response = w.jobs.run_now(job_id)
+    return {"run_id": response.run_id}
 
 
 def get_run_status(run_id: int) -> dict:
@@ -95,8 +106,12 @@ def get_run_status(run_id: int) -> dict:
     state = run.state
     return {
         "run_id": run.run_id,
-        "state": str(state.life_cycle_state.value) if state and state.life_cycle_state else "",
-        "result_state": str(state.result_state.value) if state and state.result_state else "",
+        "state": (
+            str(state.life_cycle_state.value) if state and state.life_cycle_state else ""
+        ),
+        "result_state": (
+            str(state.result_state.value) if state and state.result_state else ""
+        ),
     }
 
 
@@ -107,11 +122,13 @@ def list_clusters(limit: int = 50) -> list[dict]:
     w = get_workspace_client()
     results = []
     for cluster in w.clusters.list():
-        results.append({
-            "cluster_id": cluster.cluster_id,
-            "name": cluster.cluster_name or "",
-            "state": str(cluster.state.value) if cluster.state else "",
-        })
+        results.append(
+            {
+                "cluster_id": cluster.cluster_id,
+                "name": cluster.cluster_name or "",
+                "state": str(cluster.state.value) if cluster.state else "",
+            }
+        )
         if len(results) >= limit:
             break
     return results
@@ -151,6 +168,9 @@ def upload_to_workspace(
 
     If *ws_dir* is None the target directory is auto-detected as
     ``/Workspace/Users/<current_user>/apps/databricks-connect-starter``.
+
+    .. warning:: The Workspace filesystem API has a 10 MB file-size limit.
+       Uploads larger than that will fail with an API error.
     """
     w = get_workspace_client()
     if ws_dir is None:
@@ -163,9 +183,7 @@ def upload_to_workspace(
     ws_path = f"{ws_dir}/{filename}"
 
     with open(local_path, "rb") as f:
-        w.workspace.upload(
-            ws_path, f, format=ImportFormat.AUTO, overwrite=True
-        )
+        w.workspace.upload(ws_path, f, format=ImportFormat.AUTO, overwrite=True)
 
     return ws_path
 

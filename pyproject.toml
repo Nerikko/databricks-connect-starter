@@ -11,7 +11,7 @@ authors = [
 
 dependencies = [
     "databricks-connect>=16.1.0,<18.1",
-    "databricks-sdk>=0.40.0",
+    "databricks-sdk>=0.40.0,<1.0.0",
     "python-dotenv>=1.0.0",
 ]
 

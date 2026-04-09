@@ -5,7 +5,6 @@ import sys
 
 from dbstarter import workspace
 
-
 # ── Output helpers ──────────────────────────────────────────────────────────
 
 
@@ -29,7 +28,9 @@ def print_table(rows: list[dict], columns: list[str] | None = None) -> None:
 def parse_dot_name(name: str, expected_parts: int, label: str) -> list[str]:
     parts = name.split(".")
     if len(parts) != expected_parts:
-        print(f"Error: expected {label} (dot-separated, {expected_parts} parts), got '{name}'")
+        print(
+            f"Error: expected {label} (dot-separated, {expected_parts} parts), got '{name}'"
+        )
         sys.exit(1)
     return parts
 
@@ -108,6 +109,10 @@ def cmd_query(args: argparse.Namespace) -> None:
 
 def cmd_job_create(args: argparse.Namespace) -> None:
     import os
+
+    from dotenv import load_dotenv
+
+    load_dotenv()
 
     # Determine compute mode
     if args.cluster_id:
