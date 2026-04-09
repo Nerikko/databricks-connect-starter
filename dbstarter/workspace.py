@@ -4,6 +4,7 @@ import os
 
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.service import compute, jobs
+from databricks.sdk.service.workspace import ImportFormat
 from dotenv import load_dotenv
 
 
@@ -139,9 +140,37 @@ def run_query(sql: str) -> list[dict]:
     return [row.asDict() for row in rows]
 
 
-# ── DBFS upload ────────────────────────────────────────────────────────────
+# ── Workspace upload ───────────────────────────────────────────────────────
 
 
+def upload_to_workspace(
+    local_path: str,
+    ws_dir: str | None = None,
+) -> str:
+    """Upload a local file to the Databricks Workspace filesystem.
+
+    If *ws_dir* is None the target directory is auto-detected as
+    ``/Workspace/Users/<current_user>/apps/databricks-connect-starter``.
+    """
+    w = get_workspace_client()
+    if ws_dir is None:
+        me = w.current_user.me().user_name
+        ws_dir = f"/Workspace/Users/{me}/apps/databricks-connect-starter"
+
+    w.workspace.mkdirs(ws_dir)
+
+    filename = os.path.basename(local_path)
+    ws_path = f"{ws_dir}/{filename}"
+
+    with open(local_path, "rb") as f:
+        w.workspace.upload(
+            ws_path, f, format=ImportFormat.AUTO, overwrite=True
+        )
+
+    return ws_path
+
+
+# Deprecated — kept for backward compatibility; prefer upload_to_workspace().
 def upload_to_dbfs(
     local_path: str,
     dbfs_dir: str = "dbfs:/apps/databricks-connect-starter",
@@ -225,7 +254,10 @@ def create_job(
         ]
     elif compute_mode == "serverless":
         create_kwargs["environments"] = [
-            jobs.JobEnvironment(environment_key="Default"),
+            jobs.JobEnvironment(
+                environment_key="Default",
+                spec=compute.Environment(client="2"),
+            ),
         ]
 
     result = w.jobs.create(**create_kwargs)

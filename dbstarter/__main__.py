@@ -131,13 +131,13 @@ def cmd_job_create(args: argparse.Namespace) -> None:
             print(f"Error: file not found: {script}")
             sys.exit(1)
 
-    # Upload scripts to DBFS
-    print(f"Uploading {len(args.scripts)} script(s) to {args.dbfs_path}...")
-    dbfs_paths = []
+    # Upload scripts to Workspace filesystem
+    print(f"Uploading {len(args.scripts)} script(s)...")
+    ws_paths = []
     for script in args.scripts:
-        path = workspace.upload_to_dbfs(script, args.dbfs_path)
+        path = workspace.upload_to_workspace(script, args.upload_path)
         print(f"  {script} -> {path}")
-        dbfs_paths.append(path)
+        ws_paths.append(path)
 
     # Generate job name if not provided
     if args.name:
@@ -152,7 +152,7 @@ def cmd_job_create(args: argparse.Namespace) -> None:
     print(f"Creating job '{job_name}' ({compute_mode})...")
     result = workspace.create_job(
         name=job_name,
-        scripts=dbfs_paths,
+        scripts=ws_paths,
         compute_mode=compute_mode,
         cluster_id=cluster_id,
         spark_version=args.spark_version,
@@ -206,9 +206,9 @@ def main() -> None:
     p.add_argument("scripts", nargs="+", help="Python script(s) to run as tasks")
     p.add_argument("--name", default=None, help="Job name (auto-generated if omitted)")
     p.add_argument(
-        "--dbfs-path",
-        default="dbfs:/apps/databricks-connect-starter",
-        help="DBFS directory for uploading scripts",
+        "--upload-path",
+        default=None,
+        help="Workspace directory for scripts (default: auto-detect user home)",
     )
     p.add_argument(
         "--parallel",
