@@ -1,5 +1,5 @@
 ---
-description: 
+description: Databricks Connect starter kit — project overview, architecture, CLI, job patterns, and conventions
 alwaysApply: true
 ---
 
@@ -163,6 +163,8 @@ Notebooks run locally but Spark operations execute on Databricks (same as script
 | `run_query()` | `workspace.py` | Executes SQL via Spark Connect, returns list of dicts |
 | `list_catalogs/schemas/tables()` | `workspace.py` | Unity Catalog browsing |
 | `describe_table()` | `workspace.py` | Full table schema (columns, types, comments) |
+| `list_clusters()` | `workspace.py` | List clusters with ID, name, and state |
+| `list_secrets()` | `workspace.py` | List secret scopes and their keys |
 
 ## Known workspace constraints
 
@@ -178,3 +180,21 @@ Notebooks run locally but Spark operations execute on Databricks (same as script
 - Job scripts must NOT import `dbstarter` -- use `SparkSession.builder.getOrCreate()` instead.
 - Workspace SDK calls go through `dbstarter/workspace.py` functions, not raw SDK usage.
 - Example scripts live in `examples/` and import from `dbstarter` for interactive use.
+
+## Testing Strategy
+
+- **Unit tests**: Use a local `SparkSession` (not `DatabricksSession`) for pure transformation logic that doesn't need a live workspace.
+- **Integration tests**: Use `get_spark()` (Databricks Connect) to verify end-to-end behavior against a real workspace. These require `.env` credentials and a running cluster or serverless.
+- No test framework is configured yet. When adding tests, use `pytest` and place them in a `tests/` directory.
+
+## Troubleshooting / Error Decision Tree
+
+| Symptom | Likely cause | Fix |
+|---------|-------------|-----|
+| `AuthorizationError` or `401 Unauthorized` | Invalid or expired `DATABRICKS_TOKEN` | Regenerate token in Databricks: User Settings > Developer > Access Tokens. Update `.env`. |
+| `ClusterNotFoundException` or `INVALID_PARAMETER_VALUE` | `DATABRICKS_CLUSTER_ID` points to a non-existent or terminated cluster | Check cluster ID in Databricks UI, or remove it from `.env` to use serverless. |
+| `TimeoutError` on first `get_spark()` call | Serverless cold start (30-60s) | Wait and retry. This is normal for the first connection. |
+| `PermissionDenied` on `w.workspace.upload()` | Token lacks workspace write permissions | Ensure the token has "Can Manage" or "Can Edit" on the target Workspace path. |
+| `DBFS is disabled` or `PERMISSION_DENIED` on DBFS | Workspace has DBFS disabled | Use `upload_to_workspace()` (Workspace filesystem API), never `upload_to_dbfs()`. |
+| `ImportError: No module named 'dbstarter'` in a job | Job script imports `dbstarter` which is not on the cluster | Rewrite the script to use `SparkSession.builder.getOrCreate()` instead. |
+| `Environment spec client version` error | Serverless jobs created with `client="1"` | Use `compute.Environment(client="2")` — see `create_job()` in `workspace.py`. |
