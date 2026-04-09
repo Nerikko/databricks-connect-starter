@@ -1,71 +1,48 @@
 ---
-description: Databricks Connect, SDK, and workspace patterns for this project
+description: Databricks-specific patterns beyond what CLAUDE.md covers — Delta Lake, secrets, SDK internals
 globs: ["dbstarter/**/*.py", "examples/**/*.py", "notebooks/**/*.ipynb"]
 alwaysApply: false
 ---
 
 # Databricks Patterns
 
-## Two Execution Modes
+## Quick Mode Reference
 
-| Mode | Where script runs | SparkSession source | Can import `dbstarter`? |
-|------|-------------------|---------------------|------------------------|
-| **Interactive (Connect)** | Locally | `from dbstarter import get_spark` | Yes |
-| **Jobs** | On Databricks | `SparkSession.builder.getOrCreate()` | No |
+| Mode | SparkSession | Can import `dbstarter`? |
+|------|-------------|------------------------|
+| **Interactive** | `get_spark()` | Yes |
+| **Job** | `SparkSession.builder.getOrCreate()` | No — self-contained only |
 
-**Interactive**: Script runs on your machine. Spark operations are sent to Databricks and results stream back. Always use `get_spark()` which handles dotenv loading, serverless/cluster detection, and session construction.
+## Deprecated: upload_to_dbfs()
 
-**Jobs**: Script runs entirely on a Databricks cluster. The `dbstarter` package is NOT installed there. Scripts must be self-contained — use only PySpark and standard library imports.
+`upload_to_dbfs()` in `workspace.py` is deprecated. DBFS is disabled on most workspaces. Always use `upload_to_workspace()` which uses the Workspace filesystem API (`w.workspace.upload()`).
 
-## SparkSession Patterns
+## Secrets in Job Scripts
 
-Interactive scripts:
+Job scripts cannot read `.env`. To access secrets on the cluster, use the Databricks Secrets API via `dbutils`:
+
 ```python
-from dbstarter import get_spark
-spark = get_spark()  # Handles everything: dotenv, serverless/cluster, session builder
+# Inside a job script (not interactive — dbutils is only available on clusters)
+token = dbutils.secrets.get(scope="my-scope", key="my-key")
 ```
 
-Job scripts (self-contained):
-```python
-from pyspark.sql import SparkSession
-spark = SparkSession.builder.getOrCreate()
-```
+For interactive scripts, continue using `.env` + `python-dotenv`.
 
-Never construct `DatabricksSession` directly outside `spark_session.py`.
+## Delta Lake Conventions
 
-## Workspace SDK Patterns
+When writing to Delta tables in this project:
 
-- All SDK calls go through functions in `dbstarter/workspace.py`
-- `get_workspace_client()` creates `WorkspaceClient` from `.env` credentials
-- Each function creates its own client — no client passing between functions
-- Functions return `list[dict]` or `dict` — SDK objects never leak out
+- **MERGE** for upserts — prefer `MERGE INTO ... USING ... WHEN MATCHED THEN UPDATE WHEN NOT MATCHED THEN INSERT` over delete+insert.
+- **OPTIMIZE** after large writes to compact small files: `spark.sql("OPTIMIZE catalog.schema.table")`.
+- **ZORDER** on high-cardinality filter columns: `spark.sql("OPTIMIZE catalog.schema.table ZORDER BY (col)")`.
+- **Partitioning** — only partition by low-cardinality columns (date, region). Over-partitioning creates small file problems.
+- **Schema evolution** — use `option("mergeSchema", "true")` on `.write` when adding new columns.
 
-### File Upload
+## SDK Internals (for workspace.py contributors)
 
-Use `upload_to_workspace()` — DBFS is disabled on most workspaces.
-
-- Uses `w.workspace.upload()` (Workspace filesystem API)
-- Default target: `/Workspace/Users/<email>/apps/databricks-connect-starter/`
-- Auto-detects user email from token
-
-### Job Creation
-
-Three compute modes for `create_job()`:
-
-| Mode | CLI flag | Config |
-|------|----------|--------|
-| **Serverless** | *(default)* | `Environment(client="2")` in `JobEnvironment` |
-| **Existing cluster** | `--cluster-id <ID>` | `existing_cluster_id` on each task |
-| **Job cluster** | `--new-cluster` | Ephemeral `ClusterSpec`, `job_cluster_key="shared_job_cluster"` |
-
-- Task keys are derived from script filenames (sanitized, de-duplicated with counter)
-- Sequential by default (dependency chain). `--parallel` removes dependencies.
-- All tasks share the same compute.
-
-## Known Workspace Constraints
-
-- **DBFS disabled** — Many workspaces block public DBFS. Always use Workspace filesystem API.
-- **Serverless `client="2"`** — Jobs API requires `spec=compute.Environment(client="2")`. Using `"1"` fails.
-- **Free Edition** — Supports serverless for jobs but not classic clusters. Interactive Connect works with serverless.
-- **Cold start** — Serverless sessions take 30-60 seconds on first connection.
-- **Test dataset** — `samples.nyctaxi.trips` is available on all workspaces for testing.
+- Each workspace function calls `get_workspace_client()` internally — no client passing.
+- Functions return `list[dict]` or `dict` — SDK objects must not leak to callers.
+- Limit pattern: `limit: int = 50` with early `break` in iteration.
+- Upload target auto-detected: `/Workspace/Users/<email>/apps/databricks-connect-starter/`.
+- Serverless jobs: `spec=compute.Environment(client="2")` — `"1"` fails silently.
+- Task keys derived from filenames, de-duplicated with `_2`, `_3` suffix.

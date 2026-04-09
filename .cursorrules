@@ -1,38 +1,41 @@
 # Databricks Connect Starter Kit
 
-Minimal starter for running PySpark locally via Databricks Connect, plus a CLI for workspace exploration and job management. Python 3.12 only, managed with `uv`.
+Python 3.12 | `uv` (not pip) | black + isort (line-length 90)
 
-## Two Execution Modes
+## Critical Rules — Never Violate
 
-1. **Interactive (Databricks Connect)** — Script runs locally, Spark ops execute remotely. Use `from dbstarter import get_spark`.
-2. **Jobs (`dbstarter job-create`)** — Script runs entirely on Databricks. Must be self-contained.
-
-## Critical Rules
-
-- **Job scripts must NOT import `dbstarter`** — use `SparkSession.builder.getOrCreate()` instead. The `dbstarter` package is not installed on clusters.
+- **Job scripts must NOT import `dbstarter`** — the package is not on the cluster. Use `SparkSession.builder.getOrCreate()`.
 - **Interactive scripts** always use `from dbstarter import get_spark` — never construct `DatabricksSession` directly.
-- **DBFS is disabled** on most workspaces — use `upload_to_workspace()` (Workspace filesystem API), not DBFS.
-- **Serverless jobs** require `compute.Environment(client="2")` — `client="1"` fails.
-- **All Databricks SDK operations** go through functions in `dbstarter/workspace.py` — no raw SDK usage elsewhere.
-- **Package manager is `uv`**, not pip.
+- **Never use `upload_to_dbfs()`** — it is deprecated. Use `upload_to_workspace()` (Workspace filesystem API).
+- **Serverless jobs** require `compute.Environment(client="2")` — `client="1"` fails silently.
+- **All SDK operations** go through `dbstarter/workspace.py` — no raw `WorkspaceClient` usage elsewhere.
+- **Never commit** `.env`, `.vscode/launch.json`, or any file containing tokens.
 
-## Architecture
+## Import Cheatsheet
 
-- `dbstarter/spark_session.py` — `get_spark()` creates DatabricksSession (serverless or cluster)
-- `dbstarter/workspace.py` — All SDK interactions: catalogs, jobs, clusters, secrets, upload, query
-- `dbstarter/__main__.py` — CLI entry point, 11 subcommands via argparse
-- `dbstarter/__init__.py` — Re-exports `get_spark` and `get_workspace_client`
-- `examples/` — Demo scripts for interactive mode and job testing
-- `notebooks/` — Jupyter notebooks for interactive exploration
+```python
+# Interactive scripts (runs locally, Spark on Databricks)
+from dbstarter import get_spark
+spark = get_spark()
 
-## Code Style
+# Job scripts (runs entirely on Databricks — self-contained, no dbstarter)
+from pyspark.sql import SparkSession
+spark = SparkSession.builder.getOrCreate()
 
-- **black**: line-length 90 (configured in `pyproject.toml`)
-- **isort**: black profile, line-length 90
-- Format before committing: `black . && isort .`
+# Workspace SDK (only inside workspace.py)
+from databricks.sdk import WorkspaceClient
+from databricks.sdk.service import compute, jobs
+from databricks.sdk.service.workspace import ImportFormat
 
-## Environment
+# Data transformations
+from pyspark.sql import functions as F
+```
 
-Credentials in `.env` (gitignored): `DATABRICKS_HOST`, `DATABRICKS_TOKEN`, `DATABRICKS_CLUSTER_ID` (optional, empty = serverless).
+## Architecture (one-liner per module)
 
-See `.cursor/rules/` for detailed Databricks patterns, project structure, conventions, commands, and environment setup.
+- `spark_session.py` — `get_spark()` factory (serverless or cluster)
+- `workspace.py` — all SDK calls (catalogs, jobs, clusters, secrets, upload, query)
+- `__main__.py` — CLI, 11 subcommands via argparse
+- `__init__.py` — re-exports `get_spark`, `get_workspace_client`
+
+Full docs in `CLAUDE.md`. Detailed rules in `.cursor/rules/`.
